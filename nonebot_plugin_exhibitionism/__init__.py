@@ -37,7 +37,7 @@ class SimulationResult(TypedDict):
     error: NotRequired[str]
 
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __author__ = "hlfzsi"
 
 __plugin_meta__ = PluginMetadata(
@@ -108,16 +108,24 @@ async def find_matched_matchers(bot: Bot, event: Event, command: str) -> List[ty
     for alc in command_manager.get_commands():
         try:
             parse_result = alc.parse(command)
-            if parse_result.matched:
-                if matcher_ref := alc.meta.extra.get("matcher"):
-                    if matcher_class := matcher_ref():
-                        if matcher_class not in processed_matchers:
-                            logger.debug(
-                                f"命令 '{command}' [通过 Alconna 解析] 成功匹配到 Matcher: "
-                                f"{matcher_class.plugin_name}:{matcher_class.module_name}"
-                            )
-                            matched_list.append(matcher_class)
-                            processed_matchers.add(matcher_class)
+            if not parse_result.matched:
+                continue
+
+            matcher_ref = alc.meta.extra.get("matcher")
+            if not matcher_ref:
+                continue
+
+            matcher_class = matcher_ref()
+            if not matcher_class or matcher_class in processed_matchers:
+                continue
+
+            logger.debug(
+                f"命令 '{command}' [通过 Alconna 解析] 成功匹配到 Matcher: "
+                f"{matcher_class.plugin_name}:{matcher_class.module_name}"
+            )
+            matched_list.append(matcher_class)
+            processed_matchers.add(matcher_class)
+
         except Exception as e:
             logger.trace(f"Alconna 解析命令 '{command}' 时出错: {e}")
 
@@ -151,14 +159,15 @@ async def find_matched_matchers(bot: Bot, event: Event, command: str) -> List[ty
                 current_bot.reset(bot_token)
                 current_event.reset(event_token)
 
-            if is_match:
-                logger.debug(
-                    f"命令 '{command}' [通过模拟检查] 成功匹配到 Matcher: "
-                    f"{matcher_class.plugin_name}:{matcher_class.module_name}"
-                )
-                if matcher_class not in processed_matchers:
-                    matched_list.append(matcher_class)
-                    processed_matchers.add(matcher_class)
+            if not is_match or matcher_class in processed_matchers:
+                continue
+
+            logger.debug(
+                f"命令 '{command}' [通过模拟检查] 成功匹配到 Matcher: "
+                f"{matcher_class.plugin_name}:{matcher_class.module_name}"
+            )
+            matched_list.append(matcher_class)
+            processed_matchers.add(matcher_class)
 
     return matched_list
 
@@ -177,6 +186,7 @@ async def see(bot: Bot, event: Event, target_cmd: Match[tuple] = AlconnaMatch("t
     target_cmd_tuple = target_cmd.result or ()
     target_cmd_str = " ".join(map(str, target_cmd_tuple)).strip()
     found_matchers = await find_matched_matchers(bot, event, target_cmd_str)
+
     target_matcher = found_matchers[0] if found_matchers else None
     if not target_matcher:
         await see_see.finish("没有找到对应的处理器，请检查输入。")
@@ -186,24 +196,22 @@ async def see(bot: Bot, event: Event, target_cmd: Match[tuple] = AlconnaMatch("t
     if 'error' in simulation_result:
         await see_see.finish(f"分析处理器时出错: {simulation_result['error']}")
 
-    if simulation_result['executable_handlers']:
-        first_handler = simulation_result['executable_handlers'][0]
-
-        if first_handler.get('source'):
-            source = first_handler.get('source')
-            if isinstance(source, str) and not source.startswith('#'):
-                try:
-                    image_data = await asyncio.to_thread(code_to_jpeg, source)
-
-                    await see_see.finish(UniMessage().image(raw=image_data))
-
-                except FinishedException:
-                    raise
-                except Exception as e:
-                    await see_see.finish(f"生成源码图片失败: {e}")
-            else:
-                await see_see.finish("无法获取有效源码")
-        else:
-            await see_see.finish("找不到源码")
-    else:
+    if not simulation_result['executable_handlers']:
         await see_see.finish("没有找到会执行的handler")
+
+    first_handler = simulation_result['executable_handlers'][0]
+    source = first_handler.get('source')
+
+    if not source:
+        await see_see.finish("找不到源码")
+
+    if not isinstance(source, str) or source.startswith('#'):
+        await see_see.finish("无法获取有效源码")
+
+    try:
+        image_data = await asyncio.to_thread(code_to_jpeg, source)
+        await see_see.finish(UniMessage().image(raw=image_data))
+    except FinishedException:
+        raise
+    except Exception as e:
+        await see_see.finish(f"生成源码图片失败: {e}")

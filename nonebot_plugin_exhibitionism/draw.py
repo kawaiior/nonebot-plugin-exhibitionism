@@ -34,12 +34,12 @@ def code_to_jpeg(code_string: str) -> bytes:
 
     png_image = Image.open(io.BytesIO(highlighted_code_bytes))
 
-    if png_image.mode == 'RGBA':
+    if png_image.mode != 'RGBA':
+        rgb_image = png_image.convert('RGB')
+    else:
         background = Image.new('RGB', png_image.size, (255, 255, 255))
         background.paste(png_image, mask=png_image.split()[3])
         rgb_image = background
-    else:
-        rgb_image = png_image.convert('RGB')
 
     jpeg_buffer = io.BytesIO()
     rgb_image.save(jpeg_buffer, format='JPEG', quality=85)
