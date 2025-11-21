@@ -32,7 +32,7 @@ _✨ 让我看看！！赛博露阴癖，将你的代码展示到群聊 ✨_
 在 NoneBot2 项目的根目录下打开命令行，输入以下指令即可安装：
 
 ```bash
-nb plugin install nonebot-plugin-exhibitionism
+nb plugin install nonebot_plugin_exhibitionism
 ```
 
 ### 使用包管理器安装
